@@ -10,6 +10,11 @@ import {
   readBillionContextConfig,
   suggestBiliUpstream,
 } from "./config-hints.mjs";
+import {
+  describeChainGaps,
+  pickAnthropicUpstream,
+  pickClaudeEntry,
+} from "./stack-resolver.mjs";
 
 const CONFIG_DIR = join(homedir(), ".config");
 
@@ -67,9 +72,11 @@ export const DEFAULT_SERVICES = [
     healthPath: "/health",
     docsUrl: "https://github.com/rtk-ai/rtk",
     installHint:
-      "Download `rtk-proxy` binary from RTK releases (not included in `brew install rtk`). See README § rtk llm-proxy.",
-    binary: "rtk-proxy",
-    startHint: "rtk llm-proxy start  (configure upstream to your bili or Magpie URL)",
+      "brew install rtk → rtk llm-proxy setup (pulls rtk-proxy). Not bundled in brew alone.",
+    binary: "rtk",
+    binaryAlt: "rtk-proxy",
+    startArgs: ["llm-proxy", "start", "--bind", "127.0.0.1:8789"],
+    startHint: "Use `rtk llm-proxy start --bind 127.0.0.1:8789` (not bare rtk-proxy unless debugging)",
     optional: true,
     consoleLinks: [{ label: "RTK repo", url: "https://github.com/rtk-ai/rtk" }],
     chainRole: "tool_result compress (cache-aligned)",
@@ -127,10 +134,13 @@ async function httpOk(url, ms = 2500) {
 
 export async function probeService(def) {
   const healthUrl = `http://127.0.0.1:${def.port}${def.healthPath || ""}`;
+  const binProbe = def.binaryAlt
+    ? Promise.all([which(def.binary), which(def.binaryAlt)]).then(([a, b]) => a || b)
+    : which(def.binary);
   const [portOpen, healthOk, binPath] = await Promise.all([
     tcpOpen("127.0.0.1", def.port),
     def.healthPath ? httpOk(healthUrl) : tcpOpen("127.0.0.1", def.port),
-    which(def.binary),
+    binProbe,
   ]);
   let status = "down";
   if (healthOk) status = "up";
@@ -141,11 +151,15 @@ export async function probeService(def) {
 export async function probeAll(services = DEFAULT_SERVICES) {
   const rows = await Promise.all(services.map((d) => probeService(d)));
   const gateway = gatewayUrl();
+  const smart = pickClaudeEntry(rows, gateway);
+  const chainGaps = describeChainGaps(rows);
   return {
     gateway,
     services: rows,
+    smartStack: smart,
+    chainGaps,
     presets: buildPresets(rows),
-    claudeEnv: claudeEnvSnippets(rows, gateway),
+    claudeEnv: claudeEnvSnippets(rows, gateway, smart),
     chain: chainDiagram(),
     install: installRecipes(),
     billionContext: readBillionContextConfig(),
@@ -182,12 +196,13 @@ function buildPresets(rows) {
   ];
 }
 
-function claudeEnvSnippets(rows, gateway) {
+function claudeEnvSnippets(rows, gateway, smart) {
   const magpie = rows.find((r) => r.id === "magpie");
   const bili = rows.find((r) => r.id === "bili");
   const rtk = rows.find((r) => r.id === "rtk-proxy");
   const apiKeyPlaceholder = "magpie";
-  return [
+  const smartUrl = smart?.baseUrl;
+  const fixed = [
     {
       id: "bili-direct",
       title: "Claude Code → bili",
@@ -205,7 +220,7 @@ function claudeEnvSnippets(rows, gateway) {
         ANTHROPIC_BASE_URL: "http://127.0.0.1:8789",
         ANTHROPIC_API_KEY: apiKeyPlaceholder,
       },
-      ready: Boolean(rtk?.portOpen && magpie?.portOpen),
+      ready: Boolean(rtk?.status === "up" && magpie?.status === "up"),
       settingsFile: "~/.claude/settings.json",
     },
     {
@@ -217,6 +232,32 @@ function claudeEnvSnippets(rows, gateway) {
       },
       ready: Boolean(magpie?.healthOk),
     },
+  ];
+  if (!smartUrl) {
+    return [
+      {
+        id: "smart",
+        title: "Smart stack (auto)",
+        vars: { ANTHROPIC_BASE_URL: "(unavailable)", ANTHROPIC_API_KEY: apiKeyPlaceholder },
+        ready: false,
+        warnings: smart?.warnings || [],
+        settingsFile: "~/.claude/settings.json",
+      },
+      ...fixed,
+    ];
+  }
+  return [
+    {
+      id: "smart",
+      title: "Smart stack (auto)",
+      vars: { ANTHROPIC_BASE_URL: smartUrl, ANTHROPIC_API_KEY: apiKeyPlaceholder },
+      ready: Boolean(smart.ready),
+      hops: smart.hops,
+      tier: smart.tier,
+      warnings: smart.warnings,
+      settingsFile: "~/.claude/settings.json",
+    },
+    ...fixed,
   ];
 }
 
@@ -252,7 +293,7 @@ export async function spawnService(def) {
 
 const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
 
-export function writeClaudePreset(presetId) {
+export function writeClaudePreset(presetId, ctx = {}) {
   if (!existsSync(CLAUDE_SETTINGS)) {
     return { ok: false, error: "no ~/.claude/settings.json", hint: "Install Claude Code first" };
   }
@@ -264,7 +305,15 @@ export function writeClaudePreset(presetId) {
   }
   const env = settings.env && typeof settings.env === "object" ? { ...settings.env } : {};
   const gw = gatewayUrl() || "http://127.0.0.1:3425";
-  if (presetId === "bili-direct") {
+  if (presetId === "smart") {
+    const smart = ctx.smartStack;
+    if (!smart?.baseUrl) {
+      return { ok: false, error: "smart stack unavailable", warnings: smart?.warnings };
+    }
+    env.ANTHROPIC_BASE_URL = smart.baseUrl;
+    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  } else if (presetId === "bili-direct") {
     env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8787";
     env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
     delete env.ANTHROPIC_AUTH_TOKEN;
@@ -283,7 +332,38 @@ export function writeClaudePreset(presetId) {
   copyFileSync(CLAUDE_SETTINGS, backup);
   settings.env = env;
   writeFileSync(CLAUDE_SETTINGS, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
-  return { ok: true, backup, env: { ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL } };
+  return {
+    ok: true,
+    backup,
+    env: { ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL },
+    warnings: presetId === "smart" ? ctx.smartStack?.warnings : undefined,
+  };
+}
+
+export async function syncRtkUpstream(rows, gateway) {
+  const rtk = rows.find((r) => r.id === "rtk-proxy");
+  if (rtk?.status !== "up") {
+    return { ok: false, skipped: true, reason: "rtk-proxy not up" };
+  }
+  const up = pickAnthropicUpstream(rows, gateway);
+  if (!up.url) return { ok: false, error: up.reason || "no upstream URL" };
+  const bind = `127.0.0.1:${rtk.port}`;
+  const rtkCli = (await which("rtk")) || (await which("rtk-proxy"));
+  const useRtkCli = Boolean(await which("rtk"));
+  const cmd = useRtkCli ? "rtk" : "rtk-proxy";
+  const args = useRtkCli
+    ? ["llm-proxy", "config", "set", "anthropic_upstream", up.url, "--bind", bind]
+    : ["config", "set", "anthropic_upstream", up.url, "--bind", bind];
+  if (!rtkCli) return { ok: false, error: "rtk or rtk-proxy not on PATH" };
+  return new Promise((resolve) => {
+    const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+    let err = "";
+    child.stderr.on("data", (c) => (err += c));
+    child.on("close", (code) => {
+      if (code === 0) resolve({ ok: true, upstream: up.url, degraded: up.degraded });
+      else resolve({ ok: false, error: err.trim() || `exit ${code}` });
+    });
+  });
 }
 
 export function noteSpawn(def) {

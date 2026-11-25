@@ -70,8 +70,11 @@
     <span id="status" role="status"></span>
   </div>
   <section class="panel" aria-label="Chain">
-    <div class="panel-head">Request path</div>
+    <div class="panel-head">Smart stack (skips down hops)</div>
+    <div class="env-block" id="smart"></div>
+    <div class="panel-head" style="border-top:1px solid var(--line)">Ideal chain</div>
     <div class="chain" id="chain"></div>
+    <p class="hint meta" id="chain-gaps" style="margin:0;padding:0 16px 12px"></p>
   </section>
   <section class="panel">
     <div class="panel-head">Services</div>
@@ -106,6 +109,43 @@ async function post(path, body) {
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || data.result?.error || r.statusText);
   return data;
+}
+function renderSmart(data) {
+  const box = $("smart"); box.replaceChildren();
+  const s = data.smartStack;
+  if (!s) { box.appendChild(el("p", "hint", "no data")); return; }
+  const line = el("p", "mono", s.baseUrl ? "ENTRY " + s.baseUrl : "ENTRY (none)");
+  box.appendChild(line);
+  if (s.hops?.length) box.appendChild(el("p", "hint", "Hops: " + s.hops.join(" → ")));
+  (s.warnings || []).forEach(w => box.appendChild(el("p", "hint", "⚠ " + w)));
+  const row = el("div", "actions");
+  row.style.marginTop = "8px";
+  const apply = el("button", "small primary", "Apply smart env");
+  apply.type = "button";
+  apply.disabled = !s.ready;
+  apply.onclick = async () => {
+    apply.disabled = true;
+    try {
+      const j = await post("api/claude-preset", { presetId: "smart" });
+      $("status").textContent = j.result?.ok ? "smart env written" : (j.result?.error || "fail");
+      render(j);
+    } catch (e) { $("status").textContent = e.message; }
+    finally { apply.disabled = !s.ready; }
+  };
+  const rtk = el("button", "small", "Sync RTK upstream");
+  rtk.type = "button";
+  rtk.onclick = async () => {
+    try {
+      const j = await post("api/rtk-upstream", {});
+      $("status").textContent = j.result?.ok ? "rtk → " + j.result.upstream : (j.result?.reason || j.result?.error || "skip");
+      render(j);
+    } catch (e) { $("status").textContent = e.message; }
+  };
+  row.append(apply, rtk);
+  box.appendChild(row);
+  const gaps = $("chain-gaps");
+  gaps.replaceChildren();
+  (data.chainGaps || []).forEach(g => gaps.appendChild(el("div", "hint", "[" + g.severity + "] " + g.text)));
 }
 function renderChain(chain) {
   const c = $("chain"); c.replaceChildren();
@@ -175,7 +215,7 @@ function renderEnv(data) {
   for (const c of data.claudeEnv || []) {
     const block = el("div", "env-block");
     const head = el("div", "env-head");
-    head.appendChild(el("strong", "", c.title + (c.ready ? "  ✓" : "")));
+    head.appendChild(el("strong", "", c.title + (c.ready ? "  ✓" : "  ○")));
     const b = el("button", "small", "Apply to ~/.claude/settings.json");
     b.type = "button";
     b.onclick = async () => {
@@ -219,6 +259,7 @@ function renderInstall(data) {
   }
 }
 function render(data) {
+  renderSmart(data);
   renderChain(data.chain);
   renderServices(data);
   renderPresets(data);

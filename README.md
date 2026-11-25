@@ -26,7 +26,7 @@ magpie-token-saver
 ## Page features
 
 - Health per service + links (health, stats, docs)
-- **Start** for `billion-context` / `headroom proxy` when binary is on PATH
+- **Start** for `billion-context` / `headroom proxy` / `rtk llm-proxy` when binary is on PATH
 - Chain diagram + stack presets
 - **Apply** Claude Code `~/.claude/settings.json` env (with `.bak-*` backup)
 - Suggested `billion-context.json` upstream snippet
@@ -42,10 +42,27 @@ magpie-token-saver
 | RTK llm-proxy | 8789 (optional binary) |
 | This plugin UI | 48766 |
 
+## RTK llm-proxy (install vs run)
+
+| Piece | What it is |
+|-------|------------|
+| `brew install rtk` | Terminal **RTK CLI** only (compress `grep`/`git` output). **Not** the Anthropic API proxy. |
+| `rtk-proxy` | Separate **daemon binary** (BUSL). Fetched by `rtk llm-proxy setup` or [releases](https://github.com/rtk-ai/rtk). |
+| `rtk llm-proxy …` | **Supported control plane**: `setup`, `start --bind …`, `status`, `config set …`. |
+
+Daily commands (match the plugin UI):
+
+```sh
+rtk llm-proxy setup
+rtk llm-proxy start --bind 127.0.0.1:8789
+rtk llm-proxy config set anthropic_upstream http://127.0.0.1:8787 --bind 127.0.0.1:8789
+```
+
+The page **Start** button runs `rtk llm-proxy start`, not raw `rtk-proxy start`.
+
 ## Notes
 
 - Prefer **CC → bili → Magpie** or **RTK → bili → Magpie** over **9router** if you need correct session grouping in Magpie.
-- RTK `rtk-proxy` is a separate download from [rtk-ai/rtk](https://github.com/rtk-ai/rtk) (BUSL-1.1).
 - Headroom: `uv tool install 'headroom-ai[code,ml]'`; point upstream at Magpie.
 
 ## License

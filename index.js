@@ -10,6 +10,7 @@ import {
   noteSpawn,
   probeAll,
   spawnService,
+  syncRtkUpstream,
   writeClaudePreset,
 } from "./core.mjs";
 import { readBillionContextConfig, suggestBiliUpstream } from "./config-hints.mjs";
@@ -89,8 +90,14 @@ async function handler(req, res) {
     }
     if (req.method === "POST" && req.url === "/api/claude-preset") {
       const { presetId } = await body(req);
-      const result = writeClaudePreset(presetId);
-      return json(res, 200, { ...(await probeAll()), result });
+      const state = await probeAll();
+      const result = writeClaudePreset(presetId, state);
+      return json(res, 200, { ...state, result });
+    }
+    if (req.method === "POST" && req.url === "/api/rtk-upstream") {
+      const state = await probeAll();
+      const result = await syncRtkUpstream(state.services, state.gateway);
+      return json(res, 200, { ...state, result });
     }
     if (req.method === "GET" && req.url === "/api/bili-config") {
       const gateway = gatewayUrl();

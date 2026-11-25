@@ -67,10 +67,13 @@ export function installRecipes() {
       id: "rtk",
       title: "RTK llm-proxy",
       commands: [
-        "# from https://github.com/rtk-ai/rtk — download rtk-proxy for your OS",
-        "rtk llm-proxy start",
+        "brew install rtk",
+        "rtk llm-proxy setup",
+        "rtk llm-proxy start --bind 127.0.0.1:8789",
+        "rtk llm-proxy config set anthropic_upstream http://127.0.0.1:8787 --bind 127.0.0.1:8789",
       ],
-      note: "Point upstream at http://127.0.0.1:8787 when bili is running.",
+      note:
+        "`brew install rtk` is CLI only. `rtk llm-proxy setup` installs the `rtk-proxy` daemon binary. Start/status/config always go through `rtk llm-proxy`, not by hand-calling `rtk-proxy`.",
     },
   ];
 }
