@@ -35,6 +35,14 @@ test("shrinks large tool_result string", () => {
   assert.match(block.content, /magpie-token-saver/);
 });
 
+test("pipeline has no bili stage", async () => {
+  const { trace } = await runCompressPipeline(
+    { messages: [{ role: "user", content: "hi" }] },
+    {},
+  );
+  assert.equal(trace.some((t) => t.stage === "bili"), false);
+});
+
 test("pipeline runs rtk-local at minimum", async () => {
   const big = "x\n".repeat(2000);
   const body = {

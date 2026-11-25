@@ -1,7 +1,7 @@
 // Service definitions, health probes, and install hints for the compress stack.
 
 import { spawn } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
@@ -14,10 +14,12 @@ import { gatewayUrls } from "./gateway-compress.lib.mjs";
 import {
   describeChainGaps,
   pickAnthropicUpstream,
-  pickClaudeEntry,
+  pickMiddlewareStack,
 } from "./stack-resolver.mjs";
 
 const CONFIG_DIR = join(homedir(), ".config");
+
+export const MIDDLEWARE_SERVICES = ["magpie", "headroom", "rtk-proxy"];
 
 export const DEFAULT_SERVICES = [
   {
@@ -35,21 +37,6 @@ export const DEFAULT_SERVICES = [
       { label: "Magpie UI", url: "http://127.0.0.1:3425" },
     ],
     chainRole: "upstream",
-  },
-  {
-    id: "bili",
-    name: "billion-context (bili)",
-    port: 8787,
-    healthPath: "/health",
-    docsUrl: "https://github.com/ranxianglei/billion-context",
-    installHint: "npm i -g billion-context  OR  npx billion-context start",
-    binary: "billion-context",
-    startArgs: ["start", "--port", "8787"],
-    consoleLinks: [
-      { label: "Health", url: "http://127.0.0.1:8787/health" },
-      { label: "GitHub", url: "https://github.com/ranxianglei/billion-context" },
-    ],
-    chainRole: "context fold (ACP)",
   },
   {
     id: "headroom",
@@ -152,7 +139,7 @@ export async function probeService(def) {
 export async function probeAll(services = DEFAULT_SERVICES) {
   const rows = await Promise.all(services.map((d) => probeService(d)));
   const gateway = gatewayUrl();
-  const smart = pickClaudeEntry(rows, gateway);
+  const smart = pickMiddlewareStack(rows, gateway);
   const chainGaps = describeChainGaps(rows);
   return {
     gateway,
@@ -172,96 +159,73 @@ export async function probeAll(services = DEFAULT_SERVICES) {
 
 function buildPresets(rows) {
   const up = (id) => rows.find((r) => r.id === id)?.status === "up";
+  const magpieOk = up("magpie");
+  const headroomOk = up("headroom");
   return [
-    { id: "minimal", title: "Magpie only", description: "No local compress proxies.", ok: up("magpie") },
     {
-      id: "bili",
-      title: "CC → bili → Magpie",
-      description: "Fold long context via billion-context.",
-      ok: up("magpie") && up("bili"),
-      baseUrl: "http://127.0.0.1:8787",
+      id: "middleware",
+      title: "CC → Magpie + RTK / Headroom middleware",
+      description: "固定 :3425。onRequest：RTK-local → RTK HTTP? → Headroom :8788。",
+      ok: magpieOk,
     },
     {
-      id: "rtk-bili",
-      title: "CC → RTK → bili → Magpie",
-      description: "Tool slim + context fold (recommended balance).",
-      ok: up("magpie") && up("bili") && up("rtk-proxy"),
-      baseUrl: "http://127.0.0.1:8789",
+      id: "helpers-up",
+      title: "Headroom (:8788)",
+      description: "Middleware 调 POST /v1/compress。RTK :8789 不必开。",
+      ok: magpieOk && headroomOk,
     },
     {
-      id: "full",
-      title: "CC → RTK → bili → Headroom → Magpie",
-      description: "All layers; highest compress, more cache churn.",
-      ok: up("magpie") && up("bili") && up("headroom"),
-      baseUrl: "http://127.0.0.1:8789",
-      note: "Configure rtk upstream → bili, bili upstream → headroom, headroom → Magpie :3425",
+      id: "bili-outside",
+      title: "bili（本插件外）",
+      description:
+        "ACP / compress 等单独接口经 nginx 反代到 :8787；Claude Code 对话仍走 Magpie + billion-context 插件。",
+      ok: true,
+      note: "见 README · billion-context",
     },
   ];
 }
 
-function claudeEnvSnippets(rows, gateway, smart) {
-  const magpie = rows.find((r) => r.id === "magpie");
-  const bili = rows.find((r) => r.id === "bili");
-  const rtk = rows.find((r) => r.id === "rtk-proxy");
-  const apiKeyPlaceholder = "magpie";
-  const smartUrl = smart?.baseUrl;
-  const fixed = [
-    {
-      id: "bili-direct",
-      title: "Claude Code → bili",
-      vars: {
-        ANTHROPIC_BASE_URL: "http://127.0.0.1:8787",
-        ANTHROPIC_API_KEY: apiKeyPlaceholder,
-      },
-      ready: Boolean(bili?.healthOk && magpie?.healthOk),
-      settingsFile: "~/.claude/settings.json",
-    },
-    {
-      id: "rtk-front",
-      title: "Claude Code → RTK proxy",
-      vars: {
-        ANTHROPIC_BASE_URL: "http://127.0.0.1:8789",
-        ANTHROPIC_API_KEY: apiKeyPlaceholder,
-      },
-      ready: Boolean(rtk?.status === "up" && magpie?.status === "up"),
-      settingsFile: "~/.claude/settings.json",
-    },
-    {
-      id: "magpie-direct",
-      title: "Claude Code → Magpie (no saver)",
-      vars: {
-        ANTHROPIC_BASE_URL: gateway ? `${gateway}` : "http://127.0.0.1:3425",
-        ANTHROPIC_API_KEY: apiKeyPlaceholder,
-      },
-      ready: Boolean(magpie?.healthOk),
-    },
-  ];
-  if (!smartUrl) {
-    return [
-      {
-        id: "smart",
-        title: "Smart stack (auto)",
-        vars: { ANTHROPIC_BASE_URL: "(unavailable)", ANTHROPIC_API_KEY: apiKeyPlaceholder },
-        ready: false,
-        warnings: smart?.warnings || [],
-        settingsFile: "~/.claude/settings.json",
-      },
-      ...fixed,
-    ];
+const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
+const MAGPIE_FALLBACK = "http://127.0.0.1:3425";
+
+/** Read-only: Claude Code must stay on Magpie gateway (never rewritten by this plugin). */
+export function readClaudeGatewayHint(gateway) {
+  const want = (gateway || MAGPIE_FALLBACK).replace(/\/+$/, "");
+  let current = null;
+  let mismatch = false;
+  if (existsSync(CLAUDE_SETTINGS)) {
+    try {
+      const settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf8"));
+      const v = settings?.env?.ANTHROPIC_BASE_URL;
+      if (typeof v === "string") {
+        current = v.replace(/\/+$/, "");
+        mismatch = current !== want;
+      }
+    } catch {
+      /* ignore */
+    }
   }
-  return [
-    {
-      id: "smart",
-      title: "Smart stack (auto)",
-      vars: { ANTHROPIC_BASE_URL: smartUrl, ANTHROPIC_API_KEY: apiKeyPlaceholder },
-      ready: Boolean(smart.ready),
-      hops: smart.hops,
-      tier: smart.tier,
-      warnings: smart.warnings,
-      settingsFile: "~/.claude/settings.json",
+  return {
+    id: "magpie-only",
+    title: "Claude Code env（只读）",
+    ready: !mismatch,
+    settingsFile: "~/.claude/settings.json",
+    vars: {
+      ANTHROPIC_BASE_URL: want,
+      ANTHROPIC_API_KEY: "magpie（或你已有的 key，勿改为 8787/8789）",
     },
-    ...fixed,
-  ];
+    current,
+    mismatch,
+    policy:
+      "插件不会、也不应修改 ANTHROPIC_BASE_URL。禁用插件后若仍指向 RTK/bili，请求会挂。",
+  };
+}
+
+function claudeEnvSnippets(rows, gateway, _smart) {
+  const magpie = rows.find((r) => r.id === "magpie");
+  const hint = readClaudeGatewayHint(gateway);
+  hint.ready = Boolean(magpie?.healthOk) && !hint.mismatch;
+  return [hint];
 }
 
 const children = new Map();
@@ -294,52 +258,13 @@ export async function spawnService(def) {
   }
 }
 
-const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
-
-export function writeClaudePreset(presetId, ctx = {}) {
-  if (!existsSync(CLAUDE_SETTINGS)) {
-    return { ok: false, error: "no ~/.claude/settings.json", hint: "Install Claude Code first" };
-  }
-  let settings;
-  try {
-    settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf8"));
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  }
-  const env = settings.env && typeof settings.env === "object" ? { ...settings.env } : {};
-  const gw = gatewayUrl() || "http://127.0.0.1:3425";
-  if (presetId === "smart") {
-    const smart = ctx.smartStack;
-    if (!smart?.baseUrl) {
-      return { ok: false, error: "smart stack unavailable", warnings: smart?.warnings };
-    }
-    env.ANTHROPIC_BASE_URL = smart.baseUrl;
-    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  } else if (presetId === "bili-direct") {
-    env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8787";
-    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  } else if (presetId === "rtk-front") {
-    env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8789";
-    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  } else if (presetId === "magpie-direct") {
-    env.ANTHROPIC_BASE_URL = gw.replace(/\/+$/, "");
-    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
-    delete env.ANTHROPIC_AUTH_TOKEN;
-  } else {
-    return { ok: false, error: "unknown preset" };
-  }
-  const backup = `${CLAUDE_SETTINGS}.bak-${Date.now()}`;
-  copyFileSync(CLAUDE_SETTINGS, backup);
-  settings.env = env;
-  writeFileSync(CLAUDE_SETTINGS, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+/** Deliberately disabled: CC must keep ANTHROPIC_BASE_URL on Magpie (:3425). */
+export function writeClaudePreset() {
   return {
-    ok: true,
-    backup,
-    env: { ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL },
-    warnings: presetId === "smart" ? ctx.smartStack?.warnings : undefined,
+    ok: false,
+    error: "disabled",
+    hint:
+      "插件不再写入 ~/.claude/settings.json。请手动把 ANTHROPIC_BASE_URL 设为 Magpie 网关（通常 http://127.0.0.1:3425）。",
   };
 }
 

@@ -32,11 +32,10 @@ function sampleBili(path) {
 
 export function chainDiagram() {
   return [
-    { step: 1, label: "Claude Code", url: null },
-    { step: 2, label: "RTK llm-proxy :8789", optional: true },
-    { step: 3, label: "billion-context :8787", optional: false },
-    { step: 4, label: "Headroom :8788", optional: true },
-    { step: 5, label: "Magpie gateway :3425", optional: false },
+    { step: 1, label: "Claude Code → Magpie :3425", optional: false },
+    { step: 2, label: "middleware: RTK + Headroom", optional: true },
+    { step: 3, label: "provider", optional: false },
+    { step: 4, label: "bili：nginx → :8787（另路）", optional: true },
   ];
 }
 
@@ -70,7 +69,7 @@ export function installRecipes() {
         "brew install rtk",
         "rtk llm-proxy setup",
         "rtk llm-proxy start --bind 127.0.0.1:8789",
-        "rtk llm-proxy config set anthropic_upstream http://127.0.0.1:8787 --bind 127.0.0.1:8789",
+        "# optional alt stack only: rtk llm-proxy config set anthropic_upstream http://127.0.0.1:8787 --bind 127.0.0.1:8789",
       ],
       note:
         "`brew install rtk` is CLI only. `rtk llm-proxy setup` installs the `rtk-proxy` daemon binary. Start/status/config always go through `rtk llm-proxy`, not by hand-calling `rtk-proxy`.",

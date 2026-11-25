@@ -1,4 +1,4 @@
-// Magpie gateway: take the full Anthropic request body, run RTK→bili→Headroom pipeline, return mutated body.
+// Magpie onRequest: RTK-local → RTK HTTP? → Headroom. bili = nginx / Magpie bili plugin (out of scope).
 // CC still uses only http://127.0.0.1:3425 — this *is* modifying the request inside Magpie (like you said).
 
 import { gatewayUrls, resolveOpts, shouldRun } from "./gateway-compress.lib.mjs";
@@ -33,12 +33,12 @@ export function meta() {
   return {
     gatewayUrl: gatewayUrls.anthropicDefault,
     messagesUrl: gatewayUrls.magpieMessages(),
-    pipeline: ["rtk-local", "rtk-http?", "bili-transform?", "headroom"],
+    pipeline: ["rtk-local", "rtk-http?", "headroom?"],
     optionalServices: {
       rtk: gatewayUrls.optionalRtk,
-      bili: gatewayUrls.optionalBili,
       headroom: gatewayUrls.optionalHeadroom,
     },
+    bili: "nginx reverse proxy + Magpie bili plugin — not in this middleware",
     console: gatewayUrls.console,
     mode: "middleware-pipeline",
   };

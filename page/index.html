@@ -62,7 +62,7 @@
     <div class="logo" aria-hidden="true">↓%</div>
     <div>
       <h1>magpie-token-saver</h1>
-      <p class="sub">bili · Headroom · RTK · Magpie</p>
+      <p class="sub">RTK · Headroom · Magpie（bili 走 nginx）</p>
     </div>
   </header>
   <div class="toolbar">
@@ -74,7 +74,7 @@
     <div class="env-block mono" id="gateway-urls"></div>
   </section>
   <section class="panel" aria-label="Chain">
-    <div class="panel-head">Smart stack (skips down hops)</div>
+    <div class="panel-head">Recommended stack (CC 固定 :3425)</div>
     <div class="env-block" id="smart"></div>
     <div class="panel-head" style="border-top:1px solid var(--line)">Ideal chain</div>
     <div class="chain" id="chain"></div>
@@ -118,25 +118,15 @@ function renderSmart(data) {
   const box = $("smart"); box.replaceChildren();
   const s = data.smartStack;
   if (!s) { box.appendChild(el("p", "hint", "no data")); return; }
-  const line = el("p", "mono", s.baseUrl ? "ENTRY " + s.baseUrl : "ENTRY (none)");
+  const line = el("p", "mono", s.baseUrl ? "ANTHROPIC_BASE_URL=" + s.baseUrl : "(Magpie down)");
   box.appendChild(line);
-  if (s.hops?.length) box.appendChild(el("p", "hint", "Hops: " + s.hops.join(" → ")));
+  if (s.middleware?.length) box.appendChild(el("p", "hint", "Middleware: " + s.middleware.join(" → ")));
+  if (s.biliRole) box.appendChild(el("p", "hint", s.biliRole));
+  if (s.hops?.length) box.appendChild(el("p", "hint", "Wire: " + s.hops.join(" → ")));
   (s.warnings || []).forEach(w => box.appendChild(el("p", "hint", "⚠ " + w)));
   const row = el("div", "actions");
   row.style.marginTop = "8px";
-  const apply = el("button", "small primary", "Apply smart env");
-  apply.type = "button";
-  apply.disabled = !s.ready;
-  apply.onclick = async () => {
-    apply.disabled = true;
-    try {
-      const j = await post("api/claude-preset", { presetId: "smart" });
-      $("status").textContent = j.result?.ok ? "smart env written" : (j.result?.error || "fail");
-      render(j);
-    } catch (e) { $("status").textContent = e.message; }
-    finally { apply.disabled = !s.ready; }
-  };
-  const rtk = el("button", "small", "Sync RTK upstream");
+  const rtk = el("button", "small", "Sync RTK upstream (alt stack only)");
   rtk.type = "button";
   rtk.onclick = async () => {
     try {
@@ -145,7 +135,7 @@ function renderSmart(data) {
       render(j);
     } catch (e) { $("status").textContent = e.message; }
   };
-  row.append(apply, rtk);
+  row.append(rtk);
   box.appendChild(row);
   const gaps = $("chain-gaps");
   gaps.replaceChildren();
@@ -220,33 +210,20 @@ function renderEnv(data) {
     const block = el("div", "env-block");
     const head = el("div", "env-head");
     head.appendChild(el("strong", "", c.title + (c.ready ? "  ✓" : "  ○")));
-    const b = el("button", "small", "Apply to ~/.claude/settings.json");
-    b.type = "button";
-    b.onclick = async () => {
-      b.disabled = true;
-      try {
-        const j = await post("api/claude-preset", { presetId: c.id });
-        $("status").textContent = j.result?.ok ? "wrote settings (backup: " + (j.result.backup || "") + ")" : (j.result?.error || "failed");
-        render(j);
-      } catch (e) { $("status").textContent = e.message; }
-      finally { b.disabled = false; }
-    };
-    head.appendChild(b);
+    if (c.mismatch) {
+      const warn = el("span", "hint", "BASE_URL 不是 Magpie — 请手动改回");
+      head.appendChild(warn);
+    }
     block.appendChild(head);
     const pre = document.createElement("pre");
     pre.textContent = Object.entries(c.vars).map(([k, v]) => "export " + k + "=" + JSON.stringify(v)).join("\n");
     block.appendChild(pre);
     env.appendChild(block);
   }
-  if (data.billionContext) {
-    const block = el("div", "env-block");
-    block.appendChild(el("strong", "", "bili config"));
-    const pre = document.createElement("pre");
-    pre.textContent = JSON.stringify(data.suggestBiliUpstream || {}, null, 2);
-    block.appendChild(el("p", "hint", data.billionContext.path + (data.billionContext.exists ? " (exists)" : " (missing)")));
-    block.appendChild(pre);
-    env.appendChild(block);
-  }
+  const biliNote = el("div", "env-block");
+  biliNote.appendChild(el("strong", "", "bili（插件外）"));
+  biliNote.appendChild(el("p", "hint", "单独 API：nginx → :8787；对话：Magpie + bili 插件。"));
+  env.appendChild(biliNote);
 }
 function renderInstall(data) {
   const root = $("install"); root.replaceChildren();
@@ -267,7 +244,7 @@ function renderGatewayUrls(data) {
   const gw = data.gateway || "http://127.0.0.1:3425";
   box.appendChild(el("div", "", "Anthropic → " + gw));
   box.appendChild(el("div", "hint", "Middleware trims large tool_output on /v1/messages (no CC BASE_URL change)."));
-  box.appendChild(el("div", "hint", "Optional chain: RTK :8789 → bili :8787 → Headroom :8788 → " + gw));
+  box.appendChild(el("div", "hint", "Middleware 只含 RTK + Headroom；bili 见 README nginx 段。"));
 }
 function render(data) {
   renderGatewayUrls(data);

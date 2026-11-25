@@ -11,16 +11,56 @@ function isUp(id, rows) {
   return r?.status === "up";
 }
 
-/** Next hop after RTK (or direct entry if no RTK). */
+/** RTK llm-proxy upstream when using optional :8789 stack (not CC default). */
 export function pickAnthropicUpstream(rows, gateway) {
   const gw = (gateway || MAGPIE_FALLBACK).replace(/\/+$/, "");
-  if (isUp("bili", rows)) return { url: "http://127.0.0.1:8787", path: ["bili"], degraded: false };
-  if (isUp("magpie", rows))
-    return { url: gw, path: ["magpie"], degraded: true, reason: "bili down — skipping context fold" };
+  if (isUp("magpie", rows)) return { url: gw, path: ["magpie"], degraded: false };
   return { url: null, path: [], degraded: true, reason: "Magpie gateway not reachable" };
 }
 
-/** Best ANTHROPIC_BASE_URL for Claude Code (never through a down proxy). */
+/** CC fixed on Magpie; middleware + optional bili on Magpie upstream (not a 3-hop CC BASE_URL). */
+export function pickMiddlewareStack(rows, gateway) {
+  const gw = (gateway || MAGPIE_FALLBACK).replace(/\/+$/, "");
+  const warnings = [];
+  const middleware = ["rtk-local (in gateway)"];
+  if (isUp("headroom", rows)) middleware.push("headroom :8788");
+  else middleware.push("headroom (off — skip)");
+
+  const magpieOk = isUp("magpie", rows);
+  if (!magpieOk) {
+    return {
+      mode: "middleware",
+      baseUrl: null,
+      entry: null,
+      hops: [],
+      middleware,
+      tier: "none",
+      ready: false,
+      warnings: ["Start Magpie gateway on :3425 first."],
+    };
+  }
+
+  const hops = ["claude-code", "magpie :3425", "provider"];
+  const biliRole =
+    "bili：单独接口走 nginx → :8787；Claude 对话仍 CC → Magpie + bili 插件（本插件不管）。";
+  if (isUp("rtk-proxy", rows)) {
+    warnings.push("RTK :8789 可选；CC 不走。Middleware 已含 rtk-local。");
+  }
+
+  return {
+    mode: "middleware",
+    baseUrl: gw,
+    entry: gw,
+    hops,
+    middleware,
+    biliRole,
+    tier: "magpie-middleware",
+    ready: magpieOk,
+    warnings,
+  };
+}
+
+/** Legacy CC entry picker (alternate stacks); do not use for default CC env. */
 export function pickClaudeEntry(rows, gateway) {
   const upstream = pickAnthropicUpstream(rows, gateway);
   const warnings = [];
@@ -91,18 +131,11 @@ export function describeChainGaps(rows) {
       severity: "error",
       text: "Gateway down — nothing works until Magpie listens on :3425.",
     });
-  if (isUp("rtk-proxy", rows) && !isUp("bili", rows) && isUp("magpie", rows)) {
+  if (!isUp("headroom", rows) && isUp("magpie", rows)) {
     gaps.push({
-      id: "rtk-upstream",
-      severity: "warn",
-      text: "RTK is up but bili is down — RTK should forward straight to Magpie (no fold).",
-    });
-  }
-  if (isUp("bili", rows) && !isUp("magpie", rows)) {
-    gaps.push({
-      id: "bili-upstream",
-      severity: "error",
-      text: "bili is up but Magpie is down — requests will fail at bili.",
+      id: "headroom",
+      severity: "info",
+      text: "Headroom down — middleware still runs RTK-local only.",
     });
   }
   const rtkRow = row(rows, "rtk-proxy");

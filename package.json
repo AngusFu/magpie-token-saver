@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Magpie plugin: install, health-check, and quick links for bili / Headroom / RTK / gateway compress stack",
+  "description": "Magpie gateway middleware (RTK + Headroom) and local console for proxy health",
   "main": "./index.js",
   "bin": {
     "magpie-token-saver": "./cli.mjs"
@@ -18,7 +18,7 @@
   },
   "magpie": {
     "hooks": "./gateway-compress.hooks.mjs",
-    "summary": "Gateway middleware + console for bili/RTK/Headroom (CC stays on :3425)",
+    "summary": "Gateway RTK + Headroom middleware (CC stays on :3425); bili via nginx separately",
     "options": {
       "enabled": true,
       "gatewayCompress": true,
@@ -28,7 +28,6 @@
       "tailChars": 360,
       "pipeline": true,
       "rtkUrl": "http://127.0.0.1:8789",
-      "biliUrl": "http://127.0.0.1:8787",
       "headroomUrl": "http://127.0.0.1:8788"
     },
     "page": {
