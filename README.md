@@ -26,7 +26,7 @@ ANTHROPIC_BASE_URL=http://127.0.0.1:3425
 On each `/v1/messages` call, middleware **takes the full JSON body**, runs a **pipeline** (fail-open), then sends the mutated body upstream:
 
 1. **RTK-local** — tool output slimming (same role as RTK on the wire)
-2. **bili** — HTTP transform if `8787` exposes it (today usually skip: bili is proxy-only)
+2. **bili** — `POST /__bili/plugin/compact` when `ctx.session` / conversation id is present (ACP fold needs session state); otherwise skip with reason in trace
 3. **Headroom** — `POST :8788/v1/compress` with the same Anthropic-shaped body
 4. CC never changes `BASE_URL`; **yes, this is modifying the request** — inside Magpie, not in CC.
 

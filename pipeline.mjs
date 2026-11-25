@@ -122,29 +122,39 @@ async function stageHeadroom(body, opts, trace) {
   return body;
 }
 
-/** Stage 4 — bili: proxy-only today; try optional transform path (404 → skip). */
-async function stageBili(body, opts, trace) {
-  const path = opts.biliTransformPath;
-  const url = `${opts.biliUrl}${path.startsWith("/") ? path : `/${path}`}`;
-  const res = await postJson(url, body, opts.headroomTimeoutMs);
-  if (!res.ok) {
+/**
+ * Stage 4 — bili: stateless body transform is not on /v1/compress (404).
+ * Fold lives on the proxy path + session (ACP); we only call /__bili/plugin/compact when ctx carries ids.
+ */
+async function stageBili(body, opts, trace, ctx = {}) {
+  const conv =
+    ctx.session ||
+    ctx.conversationId ||
+    ctx.headers?.["x-bili-conversation-id"] ||
+    ctx.headers?.["x-acp-session"];
+  if (!conv) {
     trace.push({
       stage: "bili",
       ok: false,
       skipped: true,
       reason:
-        res.status === 404
-          ? "bili has no transform API yet (proxy-only); ACP fold needs CC→8787 or future bili endpoint"
-          : res.status || res.error,
+        "no conversation id on this hop — bili fold runs on the wire when Magpie upstream is :8787 (see console Wire via bili)",
     });
     return body;
   }
+  const url = `${opts.biliUrl}/__bili/plugin/compact`;
+  const payload = { conversationId: String(conv), body };
+  const res = await postJson(url, payload, opts.headroomTimeoutMs);
+  if (!res.ok) {
+    trace.push({ stage: "bili", ok: false, skipped: true, detail: res.status || res.error });
+    return body;
+  }
   const data = res.data;
-  if (Array.isArray(data?.messages)) {
-    body.messages = data.messages;
+  if (data?.ok && data.body?.messages) {
+    Object.assign(body, data.body);
     trace.push({ stage: "bili", ok: true, changed: true });
   } else {
-    trace.push({ stage: "bili", ok: true, changed: false, noop: true });
+    trace.push({ stage: "bili", ok: false, skipped: true, reason: data?.error || "compact returned no body" });
   }
   return body;
 }
@@ -153,7 +163,7 @@ async function stageBili(body, opts, trace) {
  * Run pipeline on gateway request body. Order: RTK (local) → RTK HTTP (optional) → Headroom → bili try.
  * @returns {{ body: object, trace: object[], changed: boolean }}
  */
-export async function runCompressPipeline(body, rawOpts = {}) {
+export async function runCompressPipeline(body, rawOpts = {}, ctx = {}) {
   const opts = resolvePipelineOpts(rawOpts);
   const trace = [];
   let b = cloneBody(body);
@@ -168,7 +178,7 @@ export async function runCompressPipeline(body, rawOpts = {}) {
     if (JSON.stringify(b.messages) !== before) changed = true;
 
     const beforeB = JSON.stringify(b.messages);
-    b = await stageBili(b, opts, trace);
+    b = await stageBili(b, opts, trace, ctx);
     if (JSON.stringify(b.messages) !== beforeB) changed = true;
 
     const beforeH = JSON.stringify(b.messages);

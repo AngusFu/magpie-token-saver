@@ -15,7 +15,7 @@ export async function onRequest(body, ctx = {}) {
     return undefined;
   }
 
-  const { body: next, trace, changed } = await runCompressPipeline(body, ctx.options || {});
+  const { body: next, trace, changed } = await runCompressPipeline(body, ctx.options || {}, ctx);
 
   if (!changed) {
     ctx.report?.("noop", { trace });
