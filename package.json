@@ -1,0 +1,23 @@
+{
+  "name": "magpie-token-saver",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Magpie plugin: install, health-check, and quick links for bili / Headroom / RTK / gateway compress stack",
+  "main": "./index.js",
+  "magpie": {
+    "summary": "Token saver stack console (local services + Claude Code env snippets)",
+    "page": {
+      "title": "Token Saver",
+      "titles": {
+        "zh": "Token Saver 控制台"
+      },
+      "file": "page/enter.html",
+      "service": {
+        "port": 48766,
+        "option": "port"
+      },
+      "keepAlive": true
+    }
+  }
+}

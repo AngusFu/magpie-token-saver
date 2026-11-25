@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Token Saver</title>
+<style>
+  :root { color-scheme: light dark; --bg: #f4f3f0; --panel: rgba(255,255,255,.85); --fg: #1a1a18; --muted: #6b6a64; --line: rgba(0,0,0,.08); --ok: #16794a; --ok-soft: rgba(22,121,74,.1); --warn: #8a5a00; --bad: #b42318; --accent: #0d9488; --radius: 12px; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #141413; --panel: rgba(30,30,28,.88); --fg: #ecebe6; --muted: #9b9a94; --ok: #5bd38a; --accent: #2dd4bf; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 20px 16px 48px; font: 14px/1.5 system-ui,sans-serif; background: var(--bg); color: var(--fg); }
+  main { max-width: 920px; margin: 0 auto; }
+  h1 { margin: 0 0 4px; font-size: 22px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
+  button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
+  .panel-head { padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 640; font-size: 13px; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 10px; text-transform: uppercase; color: var(--muted); }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+  .badge.up { color: var(--ok); background: var(--ok-soft); }
+  .badge.port { color: var(--warn); }
+  .badge.down { color: var(--bad); }
+  .links a { font-size: 11px; margin-right: 6px; color: var(--accent); }
+  .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
+  .preset { padding: 10px 16px; border-bottom: 1px solid var(--line); }
+  pre { font-size: 11px; padding: 10px; background: rgba(0,0,0,.05); border-radius: 8px; overflow-x: auto; }
+  .meta { padding: 12px 16px; color: var(--muted); font-size: 11.5px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>magpie-token-saver</h1>
+  <p class="sub">bili / Headroom / RTK / Magpie — health and console links</p>
+  <div class="toolbar"><button id="refresh" class="primary">Refresh</button><span id="status"></span></div>
+  <section class="panel"><div class="panel-head">Services</div><table><thead><tr><th>Service</th><th>Port</th><th>Status</th><th></th></tr></thead><tbody id="svc-rows"></tbody></table></section>
+  <section class="panel"><div class="panel-head">Stack presets</div><div id="presets"></div></section>
+  <section class="panel"><div class="panel-head">Claude Code env</div><div id="env" style="padding:14px 16px"></div></section>
+  <section class="panel meta" id="gateway"></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+function badge(st){const s=document.createElement("span");s.className="badge "+(st==="up"?"up":st==="port"?"port":"down");s.textContent=st==="up"?"up":st==="port"?"port":"down";return s;}
+function render(data){
+  const tb=$("svc-rows");tb.replaceChildren();
+  for(const s of data.services||[]){
+    const tr=document.createElement("tr");
+    const n=document.createElement("td");n.innerHTML='<div class="mono">'+s.name+'</div><div class="hint">'+(s.chainRole||"")+'</div>';if(s.installHint){const h=document.createElement("div");h.className="hint";h.textContent=s.installHint;n.appendChild(h);}
+    const p=document.createElement("td");p.className="mono";p.textContent=s.port;
+    const st=document.createElement("td");st.appendChild(badge(s.status));
+    const a=document.createElement("td");
+    const links=document.createElement("div");links.className="links";
+    for(const l of s.consoleLinks||[]){const x=document.createElement("a");x.href=l.url;x.target="_blank";x.rel="noopener";x.textContent=l.label;links.appendChild(x);}
+    if(s.startArgs?.length){const b=document.createElement("button");b.textContent="Start";b.style.marginLeft="8px";b.onclick=async()=>{b.disabled=true;try{const r=await fetch("api/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:s.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);render(j);$("status").textContent=j.result?.message||j.result?.hint||"";await load();}catch(e){$("status").textContent=e.message;}finally{b.disabled=false;}};a.appendChild(b);}
+    a.appendChild(links);tr.append(n,p,st,a);tb.appendChild(tr);
+  }
+  const pr=$("presets");pr.replaceChildren();
+  for(const p of data.presets||[]){const d=document.createElement("div");d.className="preset";d.innerHTML="<strong>"+p.title+(p.ok?" ✓":" ○")+"</strong><motion-p class=hint>"+p.description+"</p>";if(p.baseUrl)d.innerHTML+='<p class="mono hint">'+p.baseUrl+"</p>";pr.appendChild(d);}
+  const env=$("env");env.replaceChildren();
+  for(const c of data.claudeEnv||[]){const d=document.createElement("div");d.innerHTML="<strong>"+c.title+"</strong>";const pre=document.createElement("pre");pre.textContent=Object.entries(c.vars).map(([k,v])=>"export "+k+"="+JSON.stringify(v)).join("\n");d.appendChild(pre);env.appendChild(d);}
+  $("gateway").textContent=data.gateway?"gateway: "+data.gateway:"gateway.json not found";
+}
+async function load(){$("status").textContent="…";try{const r=await fetch("api/refresh",{method:"POST"});const data=await r.json();if(!r.ok)throw new Error(data.error);render(data);$("status").textContent="ok";}catch(e){$("status").textContent=e.message;}}
+$("refresh").onclick=load;load();
+</script>
+</body>
+</html>
