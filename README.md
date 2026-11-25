@@ -15,6 +15,33 @@ magpie plugin add /path/to/magpie-token-saver
 
 Open **Plugins → Token Saver**. Page service: `127.0.0.1:48766` (plugin option `port`).
 
+## Gateway middleware (no CC BASE_URL change)
+
+This plugin registers **`onRequest` hooks** on the Magpie gateway (same pattern as `magpie-deja` / `middleware-system-prompt`). Claude Code can keep:
+
+```sh
+ANTHROPIC_BASE_URL=http://127.0.0.1:3425
+```
+
+Large `tool_result` / text blocks are head-tail truncated **before** the request leaves Magpie (fail-open, marker `[magpie-token-saver: gateway compress]`).
+
+Tune in **Plugin options** (JSON) or `magpie plugin options magpie-token-saver`:
+
+```json
+{ "enabled": true, "minChars": 1200, "toolMaxChars": 12000 }
+```
+
+Optional heavier stack (bili / RTK / Headroom) remains on the console for transparency — not required for basic gateway compress.
+
+| URL | Role |
+|-----|------|
+| `http://127.0.0.1:3425` | **Magpie gateway** (CC default) |
+| `http://127.0.0.1:3425/v1/messages` | Anthropic API |
+| `http://127.0.0.1:8787` | Optional bili |
+| `http://127.0.0.1:8788` | Optional Headroom |
+| `http://127.0.0.1:8789` | Optional RTK llm-proxy |
+| `http://127.0.0.1:48766` | This plugin console |
+
 ## CLI
 
 ```sh

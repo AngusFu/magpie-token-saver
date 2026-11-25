@@ -13,8 +13,20 @@
     "url": "https://github.com/AngusFu/magpie-token-saver.git"
   },
   "author": "Angus Fu",
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "magpie": {
-    "summary": "Token saver stack console (local services + Claude Code env snippets)",
+    "hooks": "./gateway-compress.hooks.mjs",
+    "summary": "Gateway middleware + console for bili/RTK/Headroom (CC stays on :3425)",
+    "options": {
+      "enabled": true,
+      "gatewayCompress": true,
+      "minChars": 1200,
+      "toolMaxChars": 12000,
+      "headChars": 720,
+      "tailChars": 360
+    },
     "page": {
       "title": "Token Saver",
       "titles": {

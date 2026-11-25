@@ -69,6 +69,10 @@
     <button id="refresh" class="primary" type="button">Refresh</button>
     <span id="status" role="status"></span>
   </div>
+  <section class="panel" aria-label="Gateway">
+    <div class="panel-head">Magpie gateway (CC 默认连这里)</div>
+    <div class="env-block mono" id="gateway-urls"></div>
+  </section>
   <section class="panel" aria-label="Chain">
     <div class="panel-head">Smart stack (skips down hops)</div>
     <div class="env-block" id="smart"></div>
@@ -258,7 +262,15 @@ function renderInstall(data) {
     root.appendChild(d);
   }
 }
+function renderGatewayUrls(data) {
+  const box = $("gateway-urls"); box.replaceChildren();
+  const gw = data.gateway || "http://127.0.0.1:3425";
+  box.appendChild(el("div", "", "Anthropic → " + gw));
+  box.appendChild(el("div", "hint", "Middleware trims large tool_output on /v1/messages (no CC BASE_URL change)."));
+  box.appendChild(el("div", "hint", "Optional chain: RTK :8789 → bili :8787 → Headroom :8788 → " + gw));
+}
 function render(data) {
+  renderGatewayUrls(data);
   renderSmart(data);
   renderChain(data.chain);
   renderServices(data);

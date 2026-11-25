@@ -13,7 +13,7 @@ import {
   syncRtkUpstream,
   writeClaudePreset,
 } from "./core.mjs";
-import { readBillionContextConfig, suggestBiliUpstream } from "./config-hints.mjs";
+import { gatewayUrls } from "./gateway-compress.lib.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const PAGE = join(dir, "page", "index.html");
@@ -99,11 +99,13 @@ async function handler(req, res) {
       const result = await syncRtkUpstream(state.services, state.gateway);
       return json(res, 200, { ...state, result });
     }
-    if (req.method === "GET" && req.url === "/api/bili-config") {
-      const gateway = gatewayUrl();
+    if (req.method === "GET" && req.url === "/api/urls") {
+      const gw = gatewayUrl() || gatewayUrls.anthropicDefault;
       return json(res, 200, {
-        current: readBillionContextConfig(),
-        suggest: suggestBiliUpstream(gateway),
+        gateway: gw,
+        messagesUrl: gatewayUrls.magpieMessages(gw),
+        middleware: "onRequest gateway compress",
+        optional: gatewayUrls,
       });
     }
     return json(res, 404, { error: "not found" });

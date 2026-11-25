@@ -10,6 +10,7 @@ import {
   readBillionContextConfig,
   suggestBiliUpstream,
 } from "./config-hints.mjs";
+import { gatewayUrls } from "./gateway-compress.lib.mjs";
 import {
   describeChainGaps,
   pickAnthropicUpstream,
@@ -164,6 +165,8 @@ export async function probeAll(services = DEFAULT_SERVICES) {
     install: installRecipes(),
     billionContext: readBillionContextConfig(),
     suggestBiliUpstream: suggestBiliUpstream(gateway),
+    middlewareMode: true,
+    gatewayUrls: { ...gatewayUrls, messagesUrl: gatewayUrls.magpieMessages(gateway || gatewayUrls.anthropicDefault) },
   };
 }
 
