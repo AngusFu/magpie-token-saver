@@ -22,9 +22,9 @@ export function pickAnthropicUpstream(rows, gateway) {
 export function pickMiddlewareStack(rows, gateway) {
   const gw = (gateway || MAGPIE_FALLBACK).replace(/\/+$/, "");
   const warnings = [];
-  const middleware = ["rtk-local (in gateway)"];
-  if (isUp("headroom", rows)) middleware.push("headroom :8788");
-  else middleware.push("headroom (off — skip)");
+  const middleware = ["Magpie onRequest: RTK-local"];
+  if (isUp("headroom", rows)) middleware.push("Headroom :8788");
+  else middleware.push("Headroom (skip)");
 
   const magpieOk = isUp("magpie", rows);
   if (!magpieOk) {
@@ -40,9 +40,9 @@ export function pickMiddlewareStack(rows, gateway) {
     };
   }
 
-  const hops = ["claude-code", "magpie :3425", "provider"];
+  const hops = ["CC", ":3425 (RTK+Headroom inside)", "provider"];
   const biliRole =
-    "bili：单独接口走 nginx → :8787；Claude 对话仍 CC → Magpie + bili 插件（本插件不管）。";
+    "对话：CC → :3425（middleware 在网关内）。边车 :1126 → bili → Magpie，与 BASE_URL 分开。";
   if (isUp("rtk-proxy", rows)) {
     warnings.push("RTK :8789 可选；CC 不走。Middleware 已含 rtk-local。");
   }

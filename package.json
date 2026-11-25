@@ -18,7 +18,7 @@
   },
   "magpie": {
     "hooks": "./gateway-compress.hooks.mjs",
-    "summary": "Gateway RTK + Headroom middleware (CC stays on :3425); bili via nginx separately",
+    "summary": "RTK + Headroom middleware; optional :1126 bili sidecar (nginx-compatible)",
     "options": {
       "enabled": true,
       "gatewayCompress": true,
@@ -28,7 +28,11 @@
       "tailChars": 360,
       "pipeline": true,
       "rtkUrl": "http://127.0.0.1:8789",
-      "headroomUrl": "http://127.0.0.1:8788"
+      "headroomUrl": "http://127.0.0.1:8788",
+      "sidecar": true,
+      "sidecarPort": 1126,
+      "biliTarget": "http://127.0.0.1:8787",
+      "biliWireTarget": "http://127.0.0.1:3425"
     },
     "page": {
       "title": "Token Saver",

@@ -33,6 +33,10 @@
   .chain .pill { padding: 4px 10px; border-radius: 999px; background: rgba(13,148,136,.12); color: var(--accent); }
   .chain .opt { opacity: .65; border-style: dashed; }
   .chain .arr { color: var(--muted); }
+  .chain-lane { border-bottom: 1px solid var(--line); }
+  .chain-lane:last-child { border-bottom: 0; }
+  .chain-title { font-size: 11px; color: var(--muted); padding: 10px 16px 0; font-weight: 600; }
+  .pill .detail { display: block; font-size: 10px; font-weight: 400; color: var(--muted); margin-top: 2px; max-width: 220px; }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
   th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
@@ -62,7 +66,7 @@
     <div class="logo" aria-hidden="true">↓%</div>
     <div>
       <h1>magpie-token-saver</h1>
-      <p class="sub">RTK · Headroom · Magpie（bili 走 nginx）</p>
+      <p class="sub">RTK · Headroom · Magpie · bili 边车 :1126</p>
     </div>
   </header>
   <div class="toolbar">
@@ -77,7 +81,7 @@
     <div class="panel-head">Recommended stack (CC 固定 :3425)</div>
     <div class="env-block" id="smart"></div>
     <div class="panel-head" style="border-top:1px solid var(--line)">Ideal chain</div>
-    <div class="chain" id="chain"></div>
+    <div id="chain-wrap"></div>
     <p class="hint meta" id="chain-gaps" style="margin:0;padding:0 16px 12px"></p>
   </section>
   <section class="panel">
@@ -141,13 +145,37 @@ function renderSmart(data) {
   gaps.replaceChildren();
   (data.chainGaps || []).forEach(g => gaps.appendChild(el("div", "hint", "[" + g.severity + "] " + g.text)));
 }
+function renderPill(step) {
+  const p = el("span", "pill" + (step.optional ? " opt" : ""), "");
+  const title = document.createTextNode(step.label);
+  p.appendChild(title);
+  if (step.detail) {
+    const d = el("span", "detail", step.detail);
+    p.appendChild(d);
+  }
+  return p;
+}
+function renderChainLane(steps, container) {
+  const row = el("div", "chain");
+  (steps || []).forEach((step, i) => {
+    if (i) row.appendChild(el("span", "arr", "→"));
+    row.appendChild(renderPill(step));
+  });
+  container.appendChild(row);
+}
 function renderChain(chain) {
-  const c = $("chain"); c.replaceChildren();
-  if (!chain?.length) return;
-  chain.forEach((step, i) => {
-    if (i) c.appendChild(el("span", "arr", "→"));
-    const p = el("span", "pill" + (step.optional ? " opt" : ""), step.label);
-    c.appendChild(p);
+  const wrap = $("chain-wrap");
+  wrap.replaceChildren();
+  if (!chain) return;
+  const lanes = Array.isArray(chain) ? [{ title: "", steps: chain }] : [
+    { title: chain.title, steps: chain.steps },
+    chain.sidecar ? { title: chain.sidecar.title, steps: chain.sidecar.steps, opt: true } : null,
+  ].filter(Boolean);
+  lanes.forEach((lane) => {
+    const block = el("div", "chain-lane" + (lane.opt ? " opt" : ""));
+    if (lane.title) block.appendChild(el("div", "chain-title", lane.title));
+    renderChainLane(lane.steps, block);
+    wrap.appendChild(block);
   });
 }
 function renderServices(data) {
@@ -220,10 +248,12 @@ function renderEnv(data) {
     block.appendChild(pre);
     env.appendChild(block);
   }
-  const biliNote = el("div", "env-block");
-  biliNote.appendChild(el("strong", "", "bili（插件外）"));
-  biliNote.appendChild(el("p", "hint", "单独 API：nginx → :8787；对话：Magpie + bili 插件。"));
-  env.appendChild(biliNote);
+  if (data.biliSidecar?.listening) {
+    const biliNote = el("div", "env-block");
+    biliNote.appendChild(el("strong", "", "bili 边车"));
+    biliNote.appendChild(el("p", "mono hint", data.biliSidecar.entry + " → bili → " + data.biliSidecar.wireTarget));
+    env.appendChild(biliNote);
+  }
 }
 function renderInstall(data) {
   const root = $("install"); root.replaceChildren();
@@ -244,7 +274,11 @@ function renderGatewayUrls(data) {
   const gw = data.gateway || "http://127.0.0.1:3425";
   box.appendChild(el("div", "", "Anthropic → " + gw));
   box.appendChild(el("div", "hint", "Middleware trims large tool_output on /v1/messages (no CC BASE_URL change)."));
-  box.appendChild(el("div", "hint", "Middleware 只含 RTK + Headroom；bili 见 README nginx 段。"));
+  if (data.biliSidecar) {
+    const sc = data.biliSidecar;
+    box.appendChild(el("div", "mono", "bili sidecar " + (sc.listening ? "↑" : "○") + " " + sc.entry));
+    box.appendChild(el("div", "hint", sc.rewrite + " → " + sc.biliTarget));
+  }
 }
 function render(data) {
   renderGatewayUrls(data);

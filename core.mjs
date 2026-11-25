@@ -178,7 +178,7 @@ function buildPresets(rows) {
       id: "bili-outside",
       title: "bili（本插件外）",
       description:
-        "ACP / compress 等单独接口经 nginx 反代到 :8787；Claude Code 对话仍走 Magpie + billion-context 插件。",
+        "插件边车 :1126（等同 nginx）→ bili :8787；CC 对话仍 Magpie + bili 插件。",
       ok: true,
       note: "见 README · billion-context",
     },

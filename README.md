@@ -6,10 +6,11 @@ Magpie plugin: **`onRequest` middleware** for **RTK** + **Headroom**, plus a loc
 Claude Code → Magpie :3425 → onRequest: RTK-local → RTK HTTP? → Headroom? → provider
 ```
 
-**billion-context (bili)** is **out of scope** for this plugin:
+**billion-context (bili)** is not in gateway middleware:
 
-- **Claude Code** chat: `ANTHROPIC_BASE_URL` = Magpie + your **bili Magpie plugin** as today.
-- **Separate bili APIs** (compress / ACP tools / etc.): route through **nginx** to `http://127.0.0.1:8787` (or your bili listen port).
+- **Claude Code** chat: `ANTHROPIC_BASE_URL` = Magpie + **bili Magpie plugin**.
+- **bili wire sidecar** (optional, replaces local **nginx :1126**): plugin listens `127.0.0.1:1126`, forwards to  
+  `http://127.0.0.1:8787/bili/http://127.0.0.1:3425<request_uri>` — same rewrite as openresty.
 
 ## Install
 
@@ -69,19 +70,19 @@ headroom proxy --port 8788
 
 Set Headroom upstream to Magpie if you run it as a side proxy; middleware only needs `:8788/health` + `/v1/compress`.
 
-## bili (nginx)
+## bili sidecar (:1126)
 
-Example pattern (adjust server block to your host):
+Enabled by default when the plugin page service starts (`sidecar: true`).
 
-```nginx
-location /bili/ {
-  proxy_pass http://127.0.0.1:8787/;
-  proxy_http_version 1.1;
-  proxy_set_header Host $host;
-}
-```
+| Option | Default |
+|--------|---------|
+| `sidecarPort` | `1126` |
+| `biliTarget` | `http://127.0.0.1:8787` |
+| `biliWireTarget` | Magpie from `gateway.json` or `http://127.0.0.1:3425` |
 
-Use that URL for tool/MCP calls that target bili; keep Claude on Magpie.
+Point clients that used `http://127.0.0.1:1126/...` at the same URL — traffic still hits **bili proxy**, then Magpie via the `/bili/http://…` path. Headers are forwarded as-is (only `Host` → bili and normal hop-by-hop drops).
+
+Disable: `{ "sidecar": false }` and keep nginx if you prefer.
 
 ## CLI
 

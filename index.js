@@ -1,4 +1,4 @@
-// magpie-token-saver: local console for compress proxies (no agent tools).
+// magpie-token-saver: console + optional bili sidecar (:1126 → bili :8787).
 
 import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
@@ -14,12 +14,30 @@ import {
   writeClaudePreset,
 } from "./core.mjs";
 import { gatewayUrls } from "./gateway-compress.lib.mjs";
+import { biliSidecarStatus, publicSidecarUrl, startBiliSidecar } from "./bili-sidecar.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const PAGE = join(dir, "page", "index.html");
 const DEFAULT_PORT = 48766;
 
 export default async () => ({});
+
+let service = null;
+let pluginOpts = {};
+
+function mergeGateway(opts) {
+  const gw = gatewayUrl();
+  if (gw && !opts.biliWireTarget) {
+    return { ...opts, biliWireTarget: gw.replace(/\/+$/, "") };
+  }
+  return opts;
+}
+
+async function statePayload(opts) {
+  const merged = mergeGateway(opts);
+  const base = await probeAll();
+  return { ...base, biliSidecar: biliSidecarStatus(merged) };
+}
 
 function json(res, code, value) {
   res.writeHead(code, {
@@ -76,35 +94,37 @@ async function handler(req, res) {
       return html(res, 200, page());
     }
     if (req.method === "GET" && req.url === "/api/state") {
-      return json(res, 200, await probeAll());
+      return json(res, 200, await statePayload(pluginOpts));
     }
     if (req.method === "POST" && req.url === "/api/refresh") {
-      return json(res, 200, await probeAll());
+      return json(res, 200, await statePayload(pluginOpts));
     }
     if (req.method === "POST" && req.url === "/api/start") {
       const { id } = await body(req);
       const def = DEFAULT_SERVICES.find((s) => s.id === id);
       if (!def) return json(res, 404, { error: "unknown service" });
       const result = await spawnService(def);
-      return json(res, 200, { ...(await probeAll()), result, startNote: noteSpawn(def) });
+      return json(res, 200, { ...(await statePayload(pluginOpts)), result, startNote: noteSpawn(def) });
     }
     if (req.method === "POST" && req.url === "/api/claude-preset") {
       const { presetId } = await body(req);
-      const state = await probeAll();
+      const state = await statePayload(pluginOpts);
       const result = writeClaudePreset(presetId, state);
       return json(res, 200, { ...state, result });
     }
     if (req.method === "POST" && req.url === "/api/rtk-upstream") {
-      const state = await probeAll();
+      const state = await statePayload(pluginOpts);
       const result = await syncRtkUpstream(state.services, state.gateway);
       return json(res, 200, { ...state, result });
     }
     if (req.method === "GET" && req.url === "/api/urls") {
+      const merged = mergeGateway(pluginOpts);
       const gw = gatewayUrl() || gatewayUrls.anthropicDefault;
       return json(res, 200, {
         gateway: gw,
         messagesUrl: gatewayUrls.magpieMessages(gw),
-        middleware: "onRequest gateway compress",
+        middleware: "onRequest RTK + Headroom",
+        biliSidecar: publicSidecarUrl(merged),
         optional: gatewayUrls,
       });
     }
@@ -113,8 +133,6 @@ async function handler(req, res) {
     return json(res, 500, { error: String(e?.message || e) });
   }
 }
-
-let service = null;
 
 async function listen(port) {
   for (let i = 0; i < 50; i++) {
@@ -130,11 +148,18 @@ async function listen(port) {
 }
 
 export const PageService = async (_input, options) => {
-  if (service) return {};
-  const port = Number(options?.port) > 0 ? Number(options.port) : DEFAULT_PORT;
-  service = await listen(port);
-  if (!service) throw new Error(`could not listen on 127.0.0.1:${port}`);
-  return {};
+  pluginOpts = options || {};
+  const merged = mergeGateway(pluginOpts);
+  if (!service) {
+    const port = Number(options?.port) > 0 ? Number(options.port) : DEFAULT_PORT;
+    service = await listen(port);
+    if (!service) throw new Error(`could not listen on 127.0.0.1:${port}`);
+  }
+  const sidecar = await startBiliSidecar(merged);
+  if (!sidecar.ok && !sidecar.skipped) {
+    throw new Error(sidecar.error || "bili sidecar failed to bind");
+  }
+  return { biliSidecar: sidecar.entry || null };
 };
 
 export { gatewayUrl };

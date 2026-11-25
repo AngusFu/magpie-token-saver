@@ -30,13 +30,29 @@ function sampleBili(path) {
   };
 }
 
+/** Main CC chat path; middleware runs inside Magpie before upstream. */
 export function chainDiagram() {
-  return [
-    { step: 1, label: "Claude Code → Magpie :3425", optional: false },
-    { step: 2, label: "middleware: RTK + Headroom", optional: true },
-    { step: 3, label: "provider", optional: false },
-    { step: 4, label: "bili：nginx → :8787（另路）", optional: true },
-  ];
+  return {
+    title: "CC 对话",
+    steps: [
+      { step: 1, label: "Claude Code", optional: false },
+      {
+        step: 2,
+        label: "Magpie :3425",
+        detail: "onRequest · RTK-local → Headroom?",
+        optional: false,
+      },
+      { step: 3, label: "Provider", optional: false },
+    ],
+    sidecar: {
+      title: "bili 边车（非 CC BASE_URL）",
+      steps: [
+        { step: 1, label: "Client → :1126", optional: false },
+        { step: 2, label: "bili :8787", detail: "/bili/http://…3425…", optional: false },
+        { step: 3, label: "Magpie → Provider", optional: false },
+      ],
+    },
+  };
 }
 
 export function suggestBiliUpstream(gateway) {
