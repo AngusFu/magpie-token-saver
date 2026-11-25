@@ -23,7 +23,12 @@ This plugin registers **`onRequest` hooks** on the Magpie gateway (same pattern 
 ANTHROPIC_BASE_URL=http://127.0.0.1:3425
 ```
 
-Large `tool_result` / text blocks are head-tail truncated **before** the request leaves Magpie (fail-open, marker `[magpie-token-saver: gateway compress]`).
+On each `/v1/messages` call, middleware **takes the full JSON body**, runs a **pipeline** (fail-open), then sends the mutated body upstream:
+
+1. **RTK-local** — tool output slimming (same role as RTK on the wire)
+2. **bili** — HTTP transform if `8787` exposes it (today usually skip: bili is proxy-only)
+3. **Headroom** — `POST :8788/v1/compress` with the same Anthropic-shaped body
+4. CC never changes `BASE_URL`; **yes, this is modifying the request** — inside Magpie, not in CC.
 
 Tune in **Plugin options** (JSON) or `magpie plugin options magpie-token-saver`:
 

@@ -1,14 +1,10 @@
-// Magpie gateway hook: trim large tool/text blocks on Anthropic requests (fail-open).
-// CC keeps ANTHROPIC_BASE_URL on Magpie :3425 — no extra proxies required.
+// Magpie gateway: take the full Anthropic request body, run RTK→bili→Headroom pipeline, return mutated body.
+// CC still uses only http://127.0.0.1:3425 — this *is* modifying the request inside Magpie (like you said).
 
-import {
-  compressAnthropicBody,
-  gatewayUrls,
-  resolveOpts,
-  shouldRun,
-} from "./gateway-compress.lib.mjs";
+import { gatewayUrls, resolveOpts, shouldRun } from "./gateway-compress.lib.mjs";
+import { runCompressPipeline } from "./pipeline.mjs";
 
-export function onRequest(body, ctx = {}) {
+export async function onRequest(body, ctx = {}) {
   const opts = resolveOpts(ctx.options || {});
   if (!shouldRun(ctx, opts)) {
     ctx.report?.("skipped");
@@ -18,29 +14,32 @@ export function onRequest(body, ctx = {}) {
     ctx.report?.("skipped");
     return undefined;
   }
-  const { body: next, stats, changed } = compressAnthropicBody(body, opts);
+
+  const { body: next, trace, changed } = await runCompressPipeline(body, ctx.options || {});
+
   if (!changed) {
-    ctx.report?.("noop");
+    ctx.report?.("noop", { trace });
     return undefined;
   }
-  ctx.report?.("compressed", stats);
+
+  ctx.report?.("pipeline", { trace });
   if (ctx.state) {
-    ctx.state.gatewayCompress = stats;
+    ctx.state.tokenSaverPipeline = trace;
   }
   return next;
 }
 
-/** Called once when middleware loads — surfaces URLs in `magpie plugin list` / logs. */
 export function meta() {
   return {
     gatewayUrl: gatewayUrls.anthropicDefault,
     messagesUrl: gatewayUrls.magpieMessages(),
-    optionalChain: {
+    pipeline: ["rtk-local", "rtk-http?", "bili-transform?", "headroom"],
+    optionalServices: {
       rtk: gatewayUrls.optionalRtk,
       bili: gatewayUrls.optionalBili,
       headroom: gatewayUrls.optionalHeadroom,
     },
     console: gatewayUrls.console,
-    mode: "middleware",
+    mode: "middleware-pipeline",
   };
 }

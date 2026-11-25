@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { compressAnthropicBody, resolveOpts } from "../gateway-compress.lib.mjs";
+import { runCompressPipeline } from "../pipeline.mjs";
 
 test("skips small tool results", () => {
   const body = {
@@ -32,4 +33,19 @@ test("shrinks large tool_result string", () => {
   const block = body.messages[0].content[0];
   assert.ok(block.content.length < big.length);
   assert.match(block.content, /magpie-token-saver/);
+});
+
+test("pipeline runs rtk-local at minimum", async () => {
+  const big = "x\n".repeat(2000);
+  const body = {
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "t1", content: big }],
+      },
+    ],
+  };
+  const { changed, trace } = await runCompressPipeline(body, { minChars: 500, pipeline: false });
+  assert.equal(changed, true);
+  assert.ok(trace.some((t) => t.stage === "rtk-local"));
 });

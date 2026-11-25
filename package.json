@@ -25,7 +25,11 @@
       "minChars": 1200,
       "toolMaxChars": 12000,
       "headChars": 720,
-      "tailChars": 360
+      "tailChars": 360,
+      "pipeline": true,
+      "rtkUrl": "http://127.0.0.1:8789",
+      "biliUrl": "http://127.0.0.1:8787",
+      "headroomUrl": "http://127.0.0.1:8788"
     },
     "page": {
       "title": "Token Saver",
