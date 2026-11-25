@@ -1,50 +1,53 @@
 # magpie-token-saver
 
-Magpie plugin (same shape as **magpie-tools**): a local console page to **probe**, **start** (where safe), and **link** to token-saving proxies around Magpie.
+Magpie plugin (same pattern as [magpie-tools](https://github.com/AngusFu/magpie-mcp-tools)): local console for **bili**, **Headroom**, **RTK llm-proxy**, and **Magpie gateway**.
 
-| Layer | Default port | Role |
-|-------|--------------|------|
-| Magpie gateway | 3425 | Billing / upstream |
-| billion-context (bili) | 8787 | ACP context fold |
-| Headroom | 8788 | Large payload compress |
-| RTK llm-proxy | 8789 | Tool output compress (optional binary) |
-
-**Recommended chain (manual upstream config):**  
-`Claude Code → RTK (8789) → bili (8787) → Headroom (8788) → Magpie (3425)`
-
-Simpler: **CC → bili → Magpie** (set `ANTHROPIC_BASE_URL=http://127.0.0.1:8787`).
+```
+Claude Code → [RTK :8789] → bili :8787 → [Headroom :8788] → Magpie :3425
+```
 
 ## Install
 
 ```sh
-git clone https://github.com/<you>/magpie-token-saver.git
+git clone https://github.com/AngusFu/magpie-token-saver.git
 magpie plugin add /path/to/magpie-token-saver
 ```
 
-Open **Plugins → Token Saver** in Magpie. The page service listens on `127.0.0.1:48766` (override with plugin option `port`).
+Open **Plugins → Token Saver**. Page service: `127.0.0.1:48766` (plugin option `port`).
 
-## What the page does
-
-- Health check each service (HTTP `/health` or TCP).
-- Show install / start hints.
-- Open **Health / Stats / docs** links.
-- **Start** spawns detached `billion-context` or `headroom proxy` when binaries exist (Magpie and RTK are manual).
-- Presets + sample `export ANTHROPIC_*` snippets.
-
-## GitHub
-
-Create a new repo and push this directory:
+## CLI
 
 ```sh
-cd magpie-token-saver
-git init
-git add -A
-git commit -m "feat: initial magpie-token-saver plugin"
-gh repo create magpie-token-saver --public --source=. --push
+node cli.mjs --json
+# or after npm link:
+magpie-token-saver
 ```
+
+## Page features
+
+- Health per service + links (health, stats, docs)
+- **Start** for `billion-context` / `headroom proxy` when binary is on PATH
+- Chain diagram + stack presets
+- **Apply** Claude Code `~/.claude/settings.json` env (with `.bak-*` backup)
+- Suggested `billion-context.json` upstream snippet
+- Install command cheatsheet
+
+## Ports (defaults)
+
+| Service | Port |
+|---------|------|
+| Magpie | 3425 |
+| billion-context | 8787 |
+| Headroom | 8788 |
+| RTK llm-proxy | 8789 (optional binary) |
+| This plugin UI | 48766 |
 
 ## Notes
 
-- Do not stack **9router** on this path if you care about Claude Code session grouping in Magpie.
-- Port **8787** is often already used by bili; **8788** for Headroom — same as in earlier local setup.
-- RTK `rtk-proxy` is a separate release artifact; install before expecting port 8789 to be up.
+- Prefer **CC → bili → Magpie** or **RTK → bili → Magpie** over **9router** if you need correct session grouping in Magpie.
+- RTK `rtk-proxy` is a separate download from [rtk-ai/rtk](https://github.com/rtk-ai/rtk) (BUSL-1.1).
+- Headroom: `uv tool install 'headroom-ai[code,ml]'`; point upstream at Magpie.
+
+## License
+
+MIT

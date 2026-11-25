@@ -5,67 +5,247 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Token Saver</title>
 <style>
-  :root { color-scheme: light dark; --bg: #f4f3f0; --panel: rgba(255,255,255,.85); --fg: #1a1a18; --muted: #6b6a64; --line: rgba(0,0,0,.08); --ok: #16794a; --ok-soft: rgba(22,121,74,.1); --warn: #8a5a00; --bad: #b42318; --accent: #0d9488; --radius: 12px; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #141413; --panel: rgba(30,30,28,.88); --fg: #ecebe6; --muted: #9b9a94; --ok: #5bd38a; --accent: #2dd4bf; } }
+  :root {
+    color-scheme: light dark;
+    --bg: #f6f6f4; --panel: rgba(255,255,255,.85); --fg: #191918; --muted: #71716b;
+    --line: rgba(25,25,24,.10); --ok: #16794a; --ok-soft: rgba(22,121,74,.10);
+    --warn: #8a5a00; --bad: #b42318; --accent: #0d9488; --radius: 14px;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 12px 32px -20px rgba(0,0,0,.2);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #131312; --panel: rgba(30,30,28,.9); --fg: #f0f0eb; --muted: #a2a29a; --ok: #5bd38a; --accent: #2dd4bf; }
+  }
   * { box-sizing: border-box; }
-  body { margin: 0; padding: 20px 16px 48px; font: 14px/1.5 system-ui,sans-serif; background: var(--bg); color: var(--fg); }
+  body { margin: 0; padding: clamp(16px,4vw,32px) 16px 48px; font: 14px/1.5 system-ui,sans-serif; background: var(--bg); color: var(--fg); }
   main { max-width: 920px; margin: 0 auto; }
-  h1 { margin: 0 0 4px; font-size: 22px; }
-  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
-  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; }
-  button { font: inherit; padding: 7px 12px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; }
+  .hero { display: flex; gap: 12px; align-items: center; margin-bottom: 20px; }
+  .logo { width: 40px; height: 40px; border-radius: 12px; background: linear-gradient(145deg, var(--accent), #065f46); color: #fff; display: grid; place-items: center; font-size: 18px; }
+  h1 { margin: 0; font-size: 21px; }
+  .sub { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  .toolbar { display: flex; gap: 8px; margin-bottom: 14px; align-items: center; flex-wrap: wrap; }
+  button { font: inherit; padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel); cursor: pointer; font-size: 13px; }
   button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); margin-bottom: 14px; overflow: hidden; }
+  button:disabled { opacity: .55; cursor: default; }
+  button.small { padding: 5px 10px; font-size: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 14px; overflow: hidden; }
   .panel-head { padding: 12px 16px; border-bottom: 1px solid var(--line); font-weight: 640; font-size: 13px; }
+  .chain { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 16px; align-items: center; font-size: 12px; }
+  .chain .pill { padding: 4px 10px; border-radius: 999px; background: rgba(13,148,136,.12); color: var(--accent); }
+  .chain .opt { opacity: .65; border-style: dashed; }
+  .chain .arr { color: var(--muted); }
   table { width: 100%; border-collapse: collapse; }
   th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { font-size: 10px; text-transform: uppercase; color: var(--muted); }
-  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; }
+  th { font-size: 10px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+  .mono { font-family: ui-monospace,Menlo,monospace; font-size: 12px; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 560; }
   .badge.up { color: var(--ok); background: var(--ok-soft); }
-  .badge.port { color: var(--warn); }
-  .badge.down { color: var(--bad); }
-  .links a { font-size: 11px; margin-right: 6px; color: var(--accent); }
+  .badge.port { color: var(--warn); background: rgba(138,90,0,.1); }
+  .badge.down { color: var(--bad); background: rgba(180,35,24,.1); }
   .hint { color: var(--muted); font-size: 11.5px; margin-top: 4px; }
-  .preset { padding: 10px 16px; border-bottom: 1px solid var(--line); }
-  pre { font-size: 11px; padding: 10px; background: rgba(0,0,0,.05); border-radius: 8px; overflow-x: auto; }
+  .actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .links a { font-size: 11px; color: var(--accent); margin-right: 8px; }
+  .preset { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .preset:last-child { border-bottom: 0; }
+  pre { font-size: 11px; padding: 10px 12px; background: rgba(0,0,0,.05); border-radius: 8px; overflow-x: auto; margin: 8px 0 0; }
+  .env-block { padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .env-block:last-child { border-bottom: 0; }
+  .env-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .install-item code { display: block; margin-top: 6px; font-size: 11.5px; color: var(--muted); }
+  .install-item { padding: 10px 16px; border-bottom: 1px solid var(--line); }
   .meta { padding: 12px 16px; color: var(--muted); font-size: 11.5px; }
+  #status { font-size: 12px; color: var(--muted); }
 </style>
 </head>
 <body>
 <main>
-  <h1>magpie-token-saver</h1>
-  <p class="sub">bili / Headroom / RTK / Magpie — health and console links</p>
-  <div class="toolbar"><button id="refresh" class="primary">Refresh</button><span id="status"></span></div>
-  <section class="panel"><div class="panel-head">Services</div><table><thead><tr><th>Service</th><th>Port</th><th>Status</th><th></th></tr></thead><tbody id="svc-rows"></tbody></table></section>
-  <section class="panel"><div class="panel-head">Stack presets</div><div id="presets"></div></section>
-  <section class="panel"><div class="panel-head">Claude Code env</div><div id="env" style="padding:14px 16px"></div></section>
-  <section class="panel meta" id="gateway"></section>
+  <header class="hero">
+    <div class="logo" aria-hidden="true">↓%</div>
+    <div>
+      <h1>magpie-token-saver</h1>
+      <p class="sub">bili · Headroom · RTK · Magpie</p>
+    </div>
+  </header>
+  <div class="toolbar">
+    <button id="refresh" class="primary" type="button">Refresh</button>
+    <span id="status" role="status"></span>
+  </div>
+  <section class="panel" aria-label="Chain">
+    <div class="panel-head">Request path</div>
+    <div class="chain" id="chain"></div>
+  </section>
+  <section class="panel">
+    <div class="panel-head">Services</div>
+    <table>
+      <thead><tr><th>Service</th><th>Port</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody id="svc-rows"></tbody>
+    </table>
+  </section>
+  <section class="panel">
+    <div class="panel-head">Stack presets</div>
+    <div id="presets"></div>
+  </section>
+  <section class="panel">
+    <div class="panel-head">Claude Code env</div>
+    <div id="env"></div>
+  </section>
+  <section class="panel">
+    <div class="panel-head">Install commands</div>
+    <div id="install"></div>
+  </section>
+  <section class="panel meta" id="footer"></section>
 </main>
 <script>
-const $=id=>document.getElementById(id);
-function badge(st){const s=document.createElement("span");s.className="badge "+(st==="up"?"up":st==="port"?"port":"down");s.textContent=st==="up"?"up":st==="port"?"port":"down";return s;}
-function render(data){
-  const tb=$("svc-rows");tb.replaceChildren();
-  for(const s of data.services||[]){
-    const tr=document.createElement("tr");
-    const n=document.createElement("td");n.innerHTML='<div class="mono">'+s.name+'</div><div class="hint">'+(s.chainRole||"")+'</div>';if(s.installHint){const h=document.createElement("div");h.className="hint";h.textContent=s.installHint;n.appendChild(h);}
-    const p=document.createElement("td");p.className="mono";p.textContent=s.port;
-    const st=document.createElement("td");st.appendChild(badge(s.status));
-    const a=document.createElement("td");
-    const links=document.createElement("div");links.className="links";
-    for(const l of s.consoleLinks||[]){const x=document.createElement("a");x.href=l.url;x.target="_blank";x.rel="noopener";x.textContent=l.label;links.appendChild(x);}
-    if(s.startArgs?.length){const b=document.createElement("button");b.textContent="Start";b.style.marginLeft="8px";b.onclick=async()=>{b.disabled=true;try{const r=await fetch("api/start",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({id:s.id})});const j=await r.json();if(!r.ok)throw new Error(j.error);render(j);$("status").textContent=j.result?.message||j.result?.hint||"";await load();}catch(e){$("status").textContent=e.message;}finally{b.disabled=false;}};a.appendChild(b);}
-    a.appendChild(links);tr.append(n,p,st,a);tb.appendChild(tr);
-  }
-  const pr=$("presets");pr.replaceChildren();
-  for(const p of data.presets||[]){const d=document.createElement("div");d.className="preset";d.innerHTML="<strong>"+p.title+(p.ok?" ✓":" ○")+"</strong><motion-p class=hint>"+p.description+"</p>";if(p.baseUrl)d.innerHTML+='<p class="mono hint">'+p.baseUrl+"</p>";pr.appendChild(d);}
-  const env=$("env");env.replaceChildren();
-  for(const c of data.claudeEnv||[]){const d=document.createElement("div");d.innerHTML="<strong>"+c.title+"</strong>";const pre=document.createElement("pre");pre.textContent=Object.entries(c.vars).map(([k,v])=>"export "+k+"="+JSON.stringify(v)).join("\n");d.appendChild(pre);env.appendChild(d);}
-  $("gateway").textContent=data.gateway?"gateway: "+data.gateway:"gateway.json not found";
+const $ = id => document.getElementById(id);
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+function badge(st) {
+  const s = el("span", "badge " + (st === "up" ? "up" : st === "port" ? "port" : "down"), st === "up" ? "up" : st === "port" ? "listening" : "down");
+  return s;
 }
-async function load(){$("status").textContent="…";try{const r=await fetch("api/refresh",{method:"POST"});const data=await r.json();if(!r.ok)throw new Error(data.error);render(data);$("status").textContent="ok";}catch(e){$("status").textContent=e.message;}}
-$("refresh").onclick=load;load();
+async function post(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body || {}) });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error || data.result?.error || r.statusText);
+  return data;
+}
+function renderChain(chain) {
+  const c = $("chain"); c.replaceChildren();
+  if (!chain?.length) return;
+  chain.forEach((step, i) => {
+    if (i) c.appendChild(el("span", "arr", "→"));
+    const p = el("span", "pill" + (step.optional ? " opt" : ""), step.label);
+    c.appendChild(p);
+  });
+}
+function renderServices(data) {
+  const tb = $("svc-rows"); tb.replaceChildren();
+  for (const s of data.services || []) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.innerHTML = "<div>" + s.name + "</div>";
+    if (s.chainRole) { const h = el("div", "hint", s.chainRole); name.appendChild(h); }
+    if (s.binPath) { const h = el("div", "hint mono", s.binPath); name.appendChild(h); }
+    else if (s.installHint) { const h = el("div", "hint", s.installHint); name.appendChild(h); }
+    const port = el("td", "mono", String(s.port));
+    const st = document.createElement("td"); st.appendChild(badge(s.status));
+    const act = el("td");
+    const wrap = el("div", "actions");
+    if (s.startArgs?.length) {
+      const b = el("button", "small", "Start");
+      b.type = "button";
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          const j = await post("api/start", { id: s.id });
+          render(j); $("status").textContent = j.result?.message || j.result?.hint || "";
+        } catch (e) { $("status").textContent = e.message; }
+        finally { b.disabled = false; }
+      };
+      wrap.appendChild(b);
+    }
+    const links = el("div", "links");
+    for (const l of s.consoleLinks || []) {
+      const a = document.createElement("a");
+      a.href = l.url; a.target = "_blank"; a.rel = "noopener"; a.textContent = l.label;
+      links.appendChild(a);
+    }
+    if (s.docsUrl) {
+      const a = document.createElement("a");
+      a.href = s.docsUrl; a.target = "_blank"; a.rel = "noopener"; a.textContent = "docs";
+      links.appendChild(a);
+    }
+    wrap.appendChild(links);
+    act.appendChild(wrap);
+    tr.append(name, port, st, act);
+    tb.appendChild(tr);
+  }
+}
+function renderPresets(data) {
+  const pr = $("presets"); pr.replaceChildren();
+  for (const p of data.presets || []) {
+    const d = el("div", "preset");
+    d.appendChild(el("div", "", p.title + (p.ok ? "  ✓" : "  ○")));
+    d.appendChild(el("p", "hint", p.description));
+    if (p.baseUrl) d.appendChild(el("p", "mono hint", "ANTHROPIC_BASE_URL=" + p.baseUrl));
+    if (p.note) d.appendChild(el("p", "hint", p.note));
+    pr.appendChild(d);
+  }
+}
+function renderEnv(data) {
+  const env = $("env"); env.replaceChildren();
+  for (const c of data.claudeEnv || []) {
+    const block = el("div", "env-block");
+    const head = el("div", "env-head");
+    head.appendChild(el("strong", "", c.title + (c.ready ? "  ✓" : "")));
+    const b = el("button", "small", "Apply to ~/.claude/settings.json");
+    b.type = "button";
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const j = await post("api/claude-preset", { presetId: c.id });
+        $("status").textContent = j.result?.ok ? "wrote settings (backup: " + (j.result.backup || "") + ")" : (j.result?.error || "failed");
+        render(j);
+      } catch (e) { $("status").textContent = e.message; }
+      finally { b.disabled = false; }
+    };
+    head.appendChild(b);
+    block.appendChild(head);
+    const pre = document.createElement("pre");
+    pre.textContent = Object.entries(c.vars).map(([k, v]) => "export " + k + "=" + JSON.stringify(v)).join("\n");
+    block.appendChild(pre);
+    env.appendChild(block);
+  }
+  if (data.billionContext) {
+    const block = el("div", "env-block");
+    block.appendChild(el("strong", "", "bili config"));
+    const pre = document.createElement("pre");
+    pre.textContent = JSON.stringify(data.suggestBiliUpstream || {}, null, 2);
+    block.appendChild(el("p", "hint", data.billionContext.path + (data.billionContext.exists ? " (exists)" : " (missing)")));
+    block.appendChild(pre);
+    env.appendChild(block);
+  }
+}
+function renderInstall(data) {
+  const root = $("install"); root.replaceChildren();
+  for (const r of data.install || []) {
+    const d = el("div", "install-item");
+    d.appendChild(el("div", "", r.title));
+    for (const cmd of r.commands) {
+      const c = el("code", "mono", cmd);
+      c.style.display = "block";
+      d.appendChild(c);
+    }
+    if (r.note) d.appendChild(el("p", "hint", r.note));
+    root.appendChild(d);
+  }
+}
+function render(data) {
+  renderChain(data.chain);
+  renderServices(data);
+  renderPresets(data);
+  renderEnv(data);
+  renderInstall(data);
+  const bits = [data.gateway ? "gateway " + data.gateway : "no gateway.json"];
+  const repo = "https://github.com/AngusFu/magpie-token-saver";
+  bits.push("repo " + repo);
+  $("footer").innerHTML = bits.join("  ·  ");
+}
+async function load() {
+  $("refresh").disabled = true;
+  $("status").textContent = "loading…";
+  try {
+    const r = await fetch("api/refresh", { method: "POST" });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error);
+    render(data);
+    $("status").textContent = "ok";
+  } catch (e) {
+    $("status").textContent = e.message;
+  } finally {
+    $("refresh").disabled = false;
+  }
+}
+$("refresh").addEventListener("click", load);
+load();
 </script>
 </body>
 </html>

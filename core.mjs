@@ -1,9 +1,15 @@
 // Service definitions, health probes, and install hints for the compress stack.
 
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import {
+  chainDiagram,
+  installRecipes,
+  readBillionContextConfig,
+  suggestBiliUpstream,
+} from "./config-hints.mjs";
 
 const CONFIG_DIR = join(homedir(), ".config");
 
@@ -134,11 +140,16 @@ export async function probeService(def) {
 
 export async function probeAll(services = DEFAULT_SERVICES) {
   const rows = await Promise.all(services.map((d) => probeService(d)));
+  const gateway = gatewayUrl();
   return {
-    gateway: gatewayUrl(),
+    gateway,
     services: rows,
     presets: buildPresets(rows),
-    claudeEnv: claudeEnvSnippets(rows),
+    claudeEnv: claudeEnvSnippets(rows, gateway),
+    chain: chainDiagram(),
+    install: installRecipes(),
+    billionContext: readBillionContextConfig(),
+    suggestBiliUpstream: suggestBiliUpstream(gateway),
   };
 }
 
@@ -171,41 +182,62 @@ function buildPresets(rows) {
   ];
 }
 
-function claudeEnvSnippets(rows) {
+function claudeEnvSnippets(rows, gateway) {
   const magpie = rows.find((r) => r.id === "magpie");
   const bili = rows.find((r) => r.id === "bili");
   const rtk = rows.find((r) => r.id === "rtk-proxy");
+  const apiKeyPlaceholder = "magpie";
   return [
     {
       id: "bili-direct",
       title: "Claude Code → bili",
       vars: {
         ANTHROPIC_BASE_URL: "http://127.0.0.1:8787",
-        ANTHROPIC_API_KEY: "<your-magpie-api-key>",
+        ANTHROPIC_API_KEY: apiKeyPlaceholder,
       },
-      ready: Boolean(bili?.healthOk && magpie?.portOpen),
+      ready: Boolean(bili?.healthOk && magpie?.healthOk),
+      settingsFile: "~/.claude/settings.json",
     },
     {
       id: "rtk-front",
       title: "Claude Code → RTK proxy",
       vars: {
         ANTHROPIC_BASE_URL: "http://127.0.0.1:8789",
-        ANTHROPIC_API_KEY: "<your-magpie-api-key>",
+        ANTHROPIC_API_KEY: apiKeyPlaceholder,
       },
-      ready: Boolean(rtk?.portOpen),
+      ready: Boolean(rtk?.portOpen && magpie?.portOpen),
+      settingsFile: "~/.claude/settings.json",
+    },
+    {
+      id: "magpie-direct",
+      title: "Claude Code → Magpie (no saver)",
+      vars: {
+        ANTHROPIC_BASE_URL: gateway ? `${gateway}` : "http://127.0.0.1:3425",
+        ANTHROPIC_API_KEY: apiKeyPlaceholder,
+      },
+      ready: Boolean(magpie?.healthOk),
     },
   ];
 }
 
 const children = new Map();
 
-export function spawnService(def) {
+export async function spawnService(def) {
   if (!def.startArgs?.length) {
     return { ok: false, error: "manual start only", hint: def.startHint || def.installHint };
   }
+  const binPath = await which(def.binary);
+  if (!binPath) {
+    return { ok: false, error: `binary not found: ${def.binary}`, hint: def.installHint };
+  }
   if (children.has(def.id)) return { ok: true, message: "already started by this page" };
+  const portUp = await tcpOpen("127.0.0.1", def.port);
+  if (portUp && def.healthPath) {
+    const ok = await httpOk(`http://127.0.0.1:${def.port}${def.healthPath}`);
+    if (ok) return { ok: true, message: "already running" };
+  }
   try {
-    const child = spawn(def.binary, def.startArgs, {
+    const child = spawn(binPath, def.startArgs, {
       detached: true,
       stdio: "ignore",
       env: process.env,
@@ -216,6 +248,42 @@ export function spawnService(def) {
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }
+}
+
+const CLAUDE_SETTINGS = join(homedir(), ".claude", "settings.json");
+
+export function writeClaudePreset(presetId) {
+  if (!existsSync(CLAUDE_SETTINGS)) {
+    return { ok: false, error: "no ~/.claude/settings.json", hint: "Install Claude Code first" };
+  }
+  let settings;
+  try {
+    settings = JSON.parse(readFileSync(CLAUDE_SETTINGS, "utf8"));
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+  const env = settings.env && typeof settings.env === "object" ? { ...settings.env } : {};
+  const gw = gatewayUrl() || "http://127.0.0.1:3425";
+  if (presetId === "bili-direct") {
+    env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8787";
+    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  } else if (presetId === "rtk-front") {
+    env.ANTHROPIC_BASE_URL = "http://127.0.0.1:8789";
+    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  } else if (presetId === "magpie-direct") {
+    env.ANTHROPIC_BASE_URL = gw.replace(/\/+$/, "");
+    env.ANTHROPIC_API_KEY = env.ANTHROPIC_API_KEY || env.ANTHROPIC_AUTH_TOKEN || "magpie";
+    delete env.ANTHROPIC_AUTH_TOKEN;
+  } else {
+    return { ok: false, error: "unknown preset" };
+  }
+  const backup = `${CLAUDE_SETTINGS}.bak-${Date.now()}`;
+  copyFileSync(CLAUDE_SETTINGS, backup);
+  settings.env = env;
+  writeFileSync(CLAUDE_SETTINGS, `${JSON.stringify(settings, null, 2)}\n`, "utf8");
+  return { ok: true, backup, env: { ANTHROPIC_BASE_URL: env.ANTHROPIC_BASE_URL } };
 }
 
 export function noteSpawn(def) {

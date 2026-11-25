@@ -4,7 +4,15 @@ import { createServer } from "node:http";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DEFAULT_SERVICES, gatewayUrl, noteSpawn, probeAll, spawnService } from "./core.mjs";
+import {
+  DEFAULT_SERVICES,
+  gatewayUrl,
+  noteSpawn,
+  probeAll,
+  spawnService,
+  writeClaudePreset,
+} from "./core.mjs";
+import { readBillionContextConfig, suggestBiliUpstream } from "./config-hints.mjs";
 
 const dir = dirname(fileURLToPath(import.meta.url));
 const PAGE = join(dir, "page", "index.html");
@@ -76,8 +84,20 @@ async function handler(req, res) {
       const { id } = await body(req);
       const def = DEFAULT_SERVICES.find((s) => s.id === id);
       if (!def) return json(res, 404, { error: "unknown service" });
-      const result = spawnService(def);
+      const result = await spawnService(def);
       return json(res, 200, { ...(await probeAll()), result, startNote: noteSpawn(def) });
+    }
+    if (req.method === "POST" && req.url === "/api/claude-preset") {
+      const { presetId } = await body(req);
+      const result = writeClaudePreset(presetId);
+      return json(res, 200, { ...(await probeAll()), result });
+    }
+    if (req.method === "GET" && req.url === "/api/bili-config") {
+      const gateway = gatewayUrl();
+      return json(res, 200, {
+        current: readBillionContextConfig(),
+        suggest: suggestBiliUpstream(gateway),
+      });
     }
     return json(res, 404, { error: "not found" });
   } catch (e) {

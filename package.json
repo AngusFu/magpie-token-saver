@@ -5,6 +5,14 @@
   "type": "module",
   "description": "Magpie plugin: install, health-check, and quick links for bili / Headroom / RTK / gateway compress stack",
   "main": "./index.js",
+  "bin": {
+    "magpie-token-saver": "./cli.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AngusFu/magpie-token-saver.git"
+  },
+  "author": "Angus Fu",
   "magpie": {
     "summary": "Token saver stack console (local services + Claude Code env snippets)",
     "page": {
